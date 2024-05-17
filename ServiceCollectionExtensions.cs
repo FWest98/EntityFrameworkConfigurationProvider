@@ -14,7 +14,7 @@ namespace EntityFrameworkConfigurationProvider {
 
             // Add new configuration source
             return services.AddSingleton<IConfiguration>(sp => {
-                var dbContext = new Lazy<IConfigurationContext>(sp.GetRequiredService<IConfigurationContext>());
+                var dbContext = new Lazy<IConfigurationContext>(sp.GetRequiredService<IConfigurationContext>);
 
                 var builder = new ConfigurationBuilder();
                 builder.AddConfiguration(config);
