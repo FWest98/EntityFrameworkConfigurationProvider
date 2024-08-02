@@ -1,40 +1,54 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Immutable;
 
-namespace EntityFrameworkConfigurationProvider {
-    public class EntityFrameworkConfigurationProvider : ConfigurationProvider {
-        private readonly Lazy<IConfigurationContext> _database;
-        public EntityFrameworkConfigurationProvider(Lazy<IConfigurationContext> database) {
-            _database = database;
-        }
+namespace EntityFrameworkConfigurationProvider;
 
-        public override void Load() {
-            var context = _database.Value;
+public class EntityFrameworkConfigurationProvider(Lazy<IConfigurationContext> database) : ConfigurationProvider {
+    public override void Load() {
+        var context = database.Value;
+        if (!IsDatabaseAvailable(context)) {
+            Data = ImmutableDictionary<string, string>.Empty;
+        } else {
             Data = context.ConfigurationOptions.ToDictionary(s => s.Key, s => s.Value);
         }
+    }
 
-        public override void Set(string key, string value) {
-            base.Set(key, value);
+    public override void Set(string key, string value) {
+        // Store to EF
+        var context = database.Value;
+        if (!IsDatabaseAvailable(context))
+            throw new InvalidOperationException("Database is not available for storing configuration options");
+        
+        base.Set(key, value);
+            
+        var config = context.ConfigurationOptions.FirstOrDefault(s => s.Key == key);
 
-            // Store to EF
-            var context = _database.Value;
-            var config = context.ConfigurationOptions.FirstOrDefault(s => s.Key == key);
-
-            if (config == null) {
-                config = new ConfigurationOption { Key = key };
-                context.ConfigurationOptions.Add(config);
-            } else {
-                context.Entry(config).State = EntityState.Modified;
-            }
-
-            config.Value = value; 
-            context.SaveChanges();
-
-            OnReload();
+        if (config == null) {
+            config = new ConfigurationOption { Key = key };
+            context.ConfigurationOptions.Add(config);
+        } else {
+            context.Entry(config).State = EntityState.Modified;
         }
+
+        config.Value = value; 
+        context.SaveChanges();
+
+        OnReload();
+    }
+
+    private static bool IsDatabaseAvailable(IConfigurationContext context) {
+        if (context.Database.GetPendingMigrations().Any())
+            return false;
+
+        try {
+            context.ConfigurationOptions.Any();
+        } catch (Exception) {
+            return false;
+        }
+
+        return true;
     }
 }
